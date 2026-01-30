@@ -2,6 +2,10 @@ import type { Plugin } from "@opencode-ai/plugin"
 import fs from "node:fs"
 import path from "node:path"
 
+// Emoji prefixes for titles
+const EMOJI_KEYWORD = "🔍"  // Used for quick keyword-based titles
+const EMOJI_AI = "✨"       // Used for AI-generated titles
+
 interface PluginConfig {
   model: string | null
   provider: string | null
@@ -11,9 +15,10 @@ interface PluginConfig {
 }
 
 interface State {
-  titledSessions: Set<string>
-  pendingSessions: Set<string>
-  cheapestModel: { providerID: string; modelID: string } | null | undefined  // null = not yet loaded, undefined = loaded but not found
+  keywordTitledSessions: Set<string>  // Sessions with keyword title (waiting for AI)
+  aiTitledSessions: Set<string>       // Sessions with final AI title
+  pendingAISessions: Set<string>      // Sessions currently generating AI title
+  cheapestModel: { providerID: string; modelID: string } | null | undefined
 }
 
 // Known cheap/fast model patterns - ordered by preference
@@ -80,7 +85,7 @@ function loadConfig(): PluginConfig {
   return {
     model: env.OPENCODE_AUTOTITLE_MODEL || null,
     provider: env.OPENCODE_AUTOTITLE_PROVIDER || null,
-    maxLength: Number(env.OPENCODE_AUTOTITLE_MAX_LENGTH) || 40,
+    maxLength: Number(env.OPENCODE_AUTOTITLE_MAX_LENGTH) || 60,
     disabled: env.OPENCODE_AUTOTITLE_DISABLED === "1" || env.OPENCODE_AUTOTITLE_DISABLED === "true",
     debug,
   }
@@ -244,6 +249,21 @@ function isTimestampTitle(title: string | undefined): boolean {
   return timestampPatterns.some(pattern => pattern.test(title.trim()))
 }
 
+// Check if title was set by our plugin (has our emoji prefix)
+function hasPluginEmoji(title: string | undefined): boolean {
+  if (!title) return false
+  return title.startsWith(EMOJI_KEYWORD) || title.startsWith(EMOJI_AI)
+}
+
+// Check if we should modify this title
+// Returns true if: default/timestamp title OR has our emoji prefix
+// Returns false if: custom user title (no emoji from us)
+function shouldModifyTitle(title: string | undefined): boolean {
+  if (isTimestampTitle(title)) return true
+  if (hasPluginEmoji(title)) return true
+  return false
+}
+
 function sanitizeTitle(title: string, maxLength: number): string {
   return title
     .replace(/[^\w\s-]/g, "")
@@ -370,7 +390,7 @@ async function generateAITitle(
 ${context}
 
 Rules:
-- Maximum ${config.maxLength} characters
+- MUST NOT exceed ${config.maxLength} characters - this is a hard limit
 - No quotes or special punctuation
 - Use title case
 - Be SPECIFIC about the actual content discussed (e.g., "British Shorthair Cat Photo" not "Image Identification")
@@ -503,172 +523,223 @@ export const AutoTitle: Plugin = async ({ client }) => {
   }
 
   const state: State = {
-    titledSessions: new Set(),
-    pendingSessions: new Set(),
+    keywordTitledSessions: new Set(),
+    aiTitledSessions: new Set(),
+    pendingAISessions: new Set(),
     cheapestModel: null,
   }
 
-  // Find cheapest model lazily on first use, not during init
-  // This prevents blocking plugin load if providers API is slow/unavailable
-
   log.info("AutoTitle plugin initialized")
+
+  // Helper to update session title
+  async function updateTitle(sessionId: string, title: string): Promise<boolean> {
+    try {
+      await client.session.update({
+        path: { id: sessionId },
+        body: { title },
+      })
+      log.debug(`Updated session ${sessionId} title to: ${title}`)
+      return true
+    } catch (err) {
+      log.error(`Failed to update session title: ${err instanceof Error ? err.message : "unknown"}`)
+      return false
+    }
+  }
+
+  // Helper to get current session title
+  async function getSessionTitle(sessionId: string): Promise<string | undefined> {
+    try {
+      const response = await client.session.get({ path: { id: sessionId } }) as any
+      const sessionData = response?.data || response
+      return sessionData?.title
+    } catch {
+      return undefined
+    }
+  }
+
+  // Helper to get session messages
+  async function getSessionMessages(sessionId: string): Promise<{ user: string | null; assistant: string | null }> {
+    try {
+      const response = await client.session.messages({ path: { id: sessionId } }) as any
+      const messages = response?.data || response || []
+      
+      let user: string | null = null
+      let assistant: string | null = null
+      
+      for (const msg of messages) {
+        const role = msg?.info?.role || msg?.role
+        const parts = msg?.parts || []
+        
+        for (const part of parts) {
+          if (part?.type === "text" && part?.text) {
+            if (role === "user" && !user) {
+              user = part.text
+            } else if (role === "assistant" && !assistant) {
+              assistant = part.text
+            }
+            break
+          }
+        }
+        
+        if (user && assistant) break
+      }
+      
+      return { user, assistant }
+    } catch {
+      return { user: null, assistant: null }
+    }
+  }
+
+  // Phase 1: Quick keyword-based title on user message
+  async function handleUserMessage(sessionId: string, userText: string) {
+    // Skip if already processed
+    if (state.keywordTitledSessions.has(sessionId) || state.aiTitledSessions.has(sessionId)) {
+      return
+    }
+
+    // Check current title
+    const currentTitle = await getSessionTitle(sessionId)
+    
+    // Don't modify custom user titles (titles without our emoji that aren't default)
+    if (!shouldModifyTitle(currentTitle)) {
+      log.debug(`Session ${sessionId} has custom title, skipping: ${currentTitle}`)
+      state.aiTitledSessions.add(sessionId)  // Mark as done
+      return
+    }
+
+    // Generate keyword-based title
+    const keywordTitle = generateFallbackTitle(userText, config.maxLength - 2)  // -2 for emoji + space
+    if (!keywordTitle) {
+      log.debug(`Could not generate keyword title for session ${sessionId}`)
+      return
+    }
+
+    const fullTitle = `${EMOJI_KEYWORD} ${keywordTitle}`
+    if (await updateTitle(sessionId, fullTitle)) {
+      log.info(`Set keyword title: ${fullTitle}`)
+      state.keywordTitledSessions.add(sessionId)
+    }
+  }
+
+  // Phase 2: AI-generated title after response
+  async function handleSessionIdle(sessionId: string) {
+    // Skip if already has AI title
+    if (state.aiTitledSessions.has(sessionId)) {
+      return
+    }
+
+    // Skip if currently processing
+    if (state.pendingAISessions.has(sessionId)) {
+      return
+    }
+
+    // Check current title
+    const currentTitle = await getSessionTitle(sessionId)
+    
+    // Don't modify custom user titles
+    if (!shouldModifyTitle(currentTitle)) {
+      log.debug(`Session ${sessionId} has custom title, skipping AI: ${currentTitle}`)
+      state.aiTitledSessions.add(sessionId)
+      return
+    }
+
+    state.pendingAISessions.add(sessionId)
+
+    try {
+      // Get messages for context
+      const { user: userMessage, assistant: assistantMessage } = await getSessionMessages(sessionId)
+      
+      if (!userMessage) {
+        log.debug(`No user message found for session ${sessionId}`)
+        return
+      }
+
+      log.debug(`Generating AI title for session ${sessionId}`)
+      log.debug(`User: ${userMessage.slice(0, 100)}...`)
+      if (assistantMessage) {
+        log.debug(`Assistant: ${assistantMessage.slice(0, 100)}...`)
+      }
+
+      // Lazily find cheapest model
+      if (state.cheapestModel === null) {
+        try {
+          const found = await findCheapestModel(client, config, log)
+          state.cheapestModel = found ?? undefined
+          if (state.cheapestModel) {
+            log.debug(`Selected model: ${state.cheapestModel.providerID}/${state.cheapestModel.modelID}`)
+          }
+        } catch (e) {
+          log.debug(`Failed to find cheap model: ${e instanceof Error ? e.message : "unknown"}`)
+          state.cheapestModel = undefined
+        }
+      }
+
+      // Generate AI title
+      const aiTitle = await generateAITitle(
+        client, sessionId, userMessage, assistantMessage,
+        state.cheapestModel ?? null, config, log
+      )
+
+      if (aiTitle) {
+        const fullTitle = `${EMOJI_AI} ${aiTitle}`
+        if (await updateTitle(sessionId, fullTitle)) {
+          log.info(`Set AI title: ${fullTitle}`)
+          state.aiTitledSessions.add(sessionId)
+          state.keywordTitledSessions.delete(sessionId)  // Clean up
+        }
+      } else {
+        log.debug(`AI title generation failed for session ${sessionId}`)
+        // Keep the keyword title if we have one
+        if (state.keywordTitledSessions.has(sessionId)) {
+          state.aiTitledSessions.add(sessionId)  // Mark as done (keep keyword title)
+        }
+      }
+    } catch (err) {
+      log.error(`Failed to generate AI title: ${err instanceof Error ? err.message : "unknown"}`)
+    } finally {
+      state.pendingAISessions.delete(sessionId)
+    }
+  }
 
   return {
     event: async ({ event }: { event: unknown }) => {
       const e = event as any
       
-      // Log all events in debug mode to understand structure
       if (config.debug) {
-        log.debug(`Event received: ${e?.type} - ${JSON.stringify(e).slice(0, 500)}`)
-      }
-      
-      if (e?.type !== "session.idle") {
-        return
+        log.debug(`Event: ${e?.type} - ${JSON.stringify(e).slice(0, 500)}`)
       }
 
-      log.debug("Processing session.idle event")
-
-      const sessionId = extractSessionId(e)
-      if (!sessionId) {
-        log.debug(`No session ID found in event: ${JSON.stringify(e).slice(0, 300)}`)
-        return
-      }
-
-      log.debug(`Session ID: ${sessionId}`)
-
-      if (state.titledSessions.has(sessionId)) {
-        log.debug(`Session ${sessionId} already titled, skipping`)
-        return
-      }
-
-      if (state.pendingSessions.has(sessionId)) {
-        log.debug(`Session ${sessionId} already being processed, skipping`)
-        return
-      }
-
-      state.pendingSessions.add(sessionId)
-
-      try {
-        // Get session info to check current title
-        log.debug(`Fetching session info for ${sessionId}`)
-        const sessionResponse = await client.session.get({
-          path: { id: sessionId },
-        }) as any
+      // Phase 1: On user message, set quick keyword title
+      if (e?.type === "message.part.updated") {
+        const part = e?.properties?.part
+        const sessionId = part?.sessionID
         
-        log.debug(`Session response: ${JSON.stringify(sessionResponse).slice(0, 300)}`)
-        
-        // Handle different response structures
-        const sessionData = sessionResponse?.data || sessionResponse
-        const currentTitle = sessionData?.title as string | undefined
-        
-        log.debug(`Current title: ${currentTitle}`)
-        
-        if (!isTimestampTitle(currentTitle)) {
-          log.debug(`Session already has custom title: ${currentTitle}`)
-          state.titledSessions.add(sessionId)
-          state.pendingSessions.delete(sessionId)
-          return
-        }
-
-        // Fetch messages from API to get both user question and assistant response
-        let userMessage: string | null = null
-        let assistantMessage: string | null = null
-        
-        log.debug("Fetching messages from API")
-        try {
-          const messagesResponse = await client.session.messages({
-            path: { id: sessionId },
-          }) as any
-          
-          log.debug(`Messages response: ${JSON.stringify(messagesResponse).slice(0, 500)}`)
-          
-          const messages = messagesResponse?.data || messagesResponse || []
-          
-          for (const msg of (messages as any[])) {
-            const role = msg?.info?.role || msg?.role
-            const parts = msg?.parts || []
-            
-            for (const part of parts) {
-              if (part?.type === "text" && part?.text) {
-                if (role === "user" && !userMessage) {
-                  userMessage = part.text
-                } else if (role === "assistant" && !assistantMessage) {
-                  assistantMessage = part.text
-                }
-                break
-              }
+        // Check if this is a user message text part
+        if (sessionId && part?.type === "text" && part?.text) {
+          // We need to check if this is from a user message
+          // The part doesn't directly tell us the role, so we check if we've seen this session
+          if (!state.keywordTitledSessions.has(sessionId) && !state.aiTitledSessions.has(sessionId)) {
+            // Get the message to check its role
+            const messageId = part?.messageID
+            if (messageId) {
+              // For now, trigger on first text we see for a new session
+              // The session.idle will refine it later
+              handleUserMessage(sessionId, part.text).catch(err => {
+                log.debug(`Error in handleUserMessage: ${err instanceof Error ? err.message : "unknown"}`)
+              })
             }
-            
-            // Stop once we have both
-            if (userMessage && assistantMessage) break
-          }
-        } catch (msgErr) {
-          log.debug(`Failed to fetch messages: ${msgErr instanceof Error ? msgErr.message : "unknown"}`)
-        }
-
-        if (!userMessage) {
-          log.debug(`No user message found for session ${sessionId}`)
-          state.pendingSessions.delete(sessionId)
-          return
-        }
-
-        log.debug(`User message: ${userMessage.slice(0, 100)}...`)
-        if (assistantMessage) {
-          log.debug(`Assistant message: ${assistantMessage.slice(0, 100)}...`)
-        }
-
-        // Lazily find cheapest model on first use
-        if (state.cheapestModel === null) {
-          try {
-            const found = await findCheapestModel(client, config, log)
-            state.cheapestModel = found ?? undefined  // undefined means "tried but not found"
-            if (state.cheapestModel) {
-              log.debug(`Selected model: ${state.cheapestModel.providerID}/${state.cheapestModel.modelID}`)
-            } else {
-              log.debug("No cheap model found, will use session default")
-            }
-          } catch (e) {
-            log.debug(`Failed to find cheap model: ${e instanceof Error ? e.message : "unknown"}`)
-            state.cheapestModel = undefined  // Mark as tried
           }
         }
+      }
 
-        // Try AI generation first, fall back to keyword extraction
-        let title = await generateAITitle(client, sessionId, userMessage, assistantMessage, state.cheapestModel ?? null, config, log)
-        
-        if (!title) {
-          log.debug("AI generation failed or unavailable, using fallback")
-          title = generateFallbackTitle(userMessage, config.maxLength)
-        }
-        
-        if (!title) {
-          log.debug("Could not generate title from message")
-          state.pendingSessions.delete(sessionId)
-          return
-        }
-
-        log.info(`Generated title: ${title}`)
-
-        // Update session title
-        try {
-          const updateResponse = await client.session.update({
-            path: { id: sessionId },
-            body: { title },
+      // Phase 2: On session idle (after AI responds), generate AI title
+      if (e?.type === "session.idle") {
+        const sessionId = extractSessionId(e)
+        if (sessionId) {
+          handleSessionIdle(sessionId).catch(err => {
+            log.debug(`Error in handleSessionIdle: ${err instanceof Error ? err.message : "unknown"}`)
           })
-          log.debug(`Update response: ${JSON.stringify(updateResponse).slice(0, 200)}`)
-          log.info(`Updated session ${sessionId} title to: ${title}`)
-        } catch (updateErr) {
-          log.error(`Failed to update session title: ${updateErr instanceof Error ? updateErr.message : "unknown"}`)
         }
-
-        state.titledSessions.add(sessionId)
-      } catch (err) {
-        log.error(`Failed to process session ${sessionId}: ${err instanceof Error ? err.message : "unknown"}`)
-        if (err instanceof Error && err.stack) {
-          log.debug(`Stack: ${err.stack}`)
-        }
-      } finally {
-        state.pendingSessions.delete(sessionId)
       }
     },
   }
