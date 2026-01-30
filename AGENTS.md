@@ -30,11 +30,33 @@ bun install          # Preferred
 npm install          # Alternative
 ```
 
-### No Tests Currently
+### Test Commands
 
-This project does not have a test suite. If adding tests, consider:
-- Using Vitest or Jest for unit tests
-- Testing pure functions: `extractKeywords`, `inferIntent`, `sanitizeTitle`, `isTimestampTitle`, `generateFallbackTitle`
+```bash
+# Run tests once
+npm test             # or: bun run test
+
+# Run tests in watch mode
+npm run test:watch   # or: bun run test:watch
+
+# Run tests with coverage
+npm run test:coverage
+```
+
+### Test Structure
+
+Tests are located in `src/index.test.ts` using Vitest. The test suite covers:
+
+- **Title detection**: `isTimestampTitle`, `hasPluginEmoji`, `shouldModifyTitle`
+- **Text processing**: `sanitizeTitle`, `extractKeywords`, `inferIntent`, `generateFallbackTitle`
+- **Model selection**: `findCheapestFromModels`, `CHEAP_MODEL_PATTERNS`
+- **Configuration**: `loadConfig` (environment variable parsing)
+- **Event extraction**: `extractSessionId`, `extractMessageContent`
+
+When adding new functionality:
+1. Export the function from `src/index.ts` if it's a pure function
+2. Add corresponding tests in `src/index.test.ts`
+3. Run `npm test` to verify all tests pass
 
 ### No Linter Currently
 
@@ -212,8 +234,11 @@ The OpenCode SDK client provides:
 | File | Purpose |
 |------|---------|
 | `src/index.ts` | Main plugin implementation |
+| `src/index.test.ts` | Unit tests (Vitest) |
 | `package.json` | Project manifest and scripts |
 | `tsconfig.json` | TypeScript configuration |
+| `.github/workflows/ci.yml` | CI workflow (tests on Node 18/20/22) |
+| `.github/workflows/publish.yml` | npm publish workflow |
 | `dist/index.js` | Compiled output (generated) |
 
 ## Git Workflow

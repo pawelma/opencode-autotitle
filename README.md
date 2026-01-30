@@ -172,16 +172,22 @@ git clone https://github.com/pawelma/opencode-autotitle
 cd opencode-autotitle
 
 # Install dependencies
-bun install
+npm install          # or: bun install
 
 # Build
-bun run build
+npm run build
 
 # Watch mode
-bun run dev
+npm run dev
 
 # Type check
-bun run typecheck
+npm run typecheck
+
+# Run tests
+npm test
+
+# Run tests in watch mode
+npm run test:watch
 ```
 
 ## Inspirations
