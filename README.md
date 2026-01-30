@@ -142,16 +142,11 @@ All configuration is optional. The plugin works out of the box.
 
 ### Model Selection
 
-By default, the plugin auto-discovers the cheapest available model from your connected providers, preferring models with names like `fast`, `flash`, `haiku`, or `mini`. To use a specific model for title generation:
+By default, the plugin auto-discovers the cheapest available model from your connected providers, preferring models with names like `fast`, `flash`, `haiku`, or `mini`. To use a specific model:
 
 ```bash
 export OPENCODE_AUTOTITLE_MODEL="anthropic/claude-haiku-4-5"
 ```
-
-Recommended models for title generation:
-- `anthropic/claude-haiku-4-5` - Fast and cheap
-- `openai/gpt-4o-mini` - Good balance
-- `google/gemini-2.0-flash` - Very fast
 
 ## Troubleshooting
 
