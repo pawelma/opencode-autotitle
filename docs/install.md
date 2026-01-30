@@ -33,26 +33,28 @@ If OpenCode is not installed, guide the user to install it first:
 
 ### Step 2: Install the Plugin
 
-**Option A: Local plugins directory (recommended)**
+OpenCode loads plugin **files** (`.js`/`.ts`) directly from `~/.config/opencode/plugins/`.
 
-Plugins in `~/.config/opencode/plugins/` are auto-discovered by OpenCode - no config changes needed.
+**Option A: Quick install script (recommended)**
 
 ```bash
-# Create plugins directory if it doesn't exist
-mkdir -p ~/.config/opencode/plugins
-
-# Clone the repository
-git clone https://github.com/pawelma/opencode-autotitle ~/.config/opencode/plugins/opencode-autotitle
-
-# Navigate to the plugin directory
-cd ~/.config/opencode/plugins/opencode-autotitle
-
-# Install dependencies and build
-bun install && bun run build
-# Or with npm: npm install && npm run build
+curl -fsSL https://raw.githubusercontent.com/pawelma/opencode-autotitle/refs/heads/master/install.sh | bash
 ```
 
-**Note:** Do NOT add local plugins to `opencode.json` - they are loaded automatically from the plugins directory.
+**Option B: Manual installation**
+
+```bash
+# Create a temp directory, clone, build, and copy the plugin file
+tmp_dir=$(mktemp -d)
+git clone --depth 1 https://github.com/pawelma/opencode-autotitle "$tmp_dir"
+cd "$tmp_dir"
+npm install && npm run build
+mkdir -p ~/.config/opencode/plugins
+cp dist/index.js ~/.config/opencode/plugins/opencode-autotitle.js
+rm -rf "$tmp_dir"
+```
+
+**Note:** OpenCode expects plugin **files** in the plugins directory, not subdirectories.
 
 ### Step 3: Optional Configuration
 
@@ -100,9 +102,8 @@ You'll see messages like:
 ### Troubleshooting
 
 **Plugin not loading:**
-- Check that the plugin is in `~/.config/opencode/plugins/opencode-autotitle/` with built files in `dist/`
+- Check that the plugin file exists: `ls ~/.config/opencode/plugins/opencode-autotitle.js`
 - Run `opencode --version` to ensure OpenCode is working
-- Do NOT add to `opencode.json` - local plugins are auto-discovered
 
 **Titles not generating:**
 - Enable debug mode: `export OPENCODE_AUTOTITLE_DEBUG=debug.log`

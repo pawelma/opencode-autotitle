@@ -34,15 +34,16 @@ curl -fsSL https://raw.githubusercontent.com/pawelma/opencode-autotitle/refs/hea
 
 ### Manual Installation
 
-**Via local plugins directory (recommended)**
-
-Plugins in `~/.config/opencode/plugins/` are auto-discovered - no config changes needed.
+OpenCode loads plugin **files** directly from `~/.config/opencode/plugins/`.
 
 ```bash
+# Clone, build, and copy the plugin file
+tmp_dir=$(mktemp -d)
+git clone --depth 1 https://github.com/pawelma/opencode-autotitle "$tmp_dir"
+cd "$tmp_dir" && npm install && npm run build
 mkdir -p ~/.config/opencode/plugins
-git clone https://github.com/pawelma/opencode-autotitle ~/.config/opencode/plugins/opencode-autotitle
-cd ~/.config/opencode/plugins/opencode-autotitle
-bun install && bun run build
+cp dist/index.js ~/.config/opencode/plugins/opencode-autotitle.js
+rm -rf "$tmp_dir"
 ```
 
 ## How It Works

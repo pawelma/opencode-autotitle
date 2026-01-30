@@ -2,7 +2,8 @@
 set -euo pipefail
 
 PLUGIN_NAME="opencode-autotitle"
-PLUGIN_DIR="$HOME/.config/opencode/plugins/$PLUGIN_NAME"
+PLUGINS_DIR="$HOME/.config/opencode/plugins"
+PLUGIN_FILE="$PLUGINS_DIR/$PLUGIN_NAME.js"
 REPO_URL="https://github.com/pawelma/opencode-autotitle"
 RAW_URL="https://raw.githubusercontent.com/pawelma/opencode-autotitle/refs/heads/master"
 
@@ -56,29 +57,18 @@ check_opencode() {
 install_plugin() {
     print_info "Installing $PLUGIN_NAME..."
     
-    mkdir -p "$HOME/.config/opencode/plugins"
+    # Create plugins directory
+    mkdir -p "$PLUGINS_DIR"
     
-    if [ -d "$PLUGIN_DIR" ]; then
-        print_info "Updating existing installation..."
-        cd "$PLUGIN_DIR"
-        if [ -d ".git" ]; then
-            git pull --quiet
-        else
-            cd ..
-            rm -rf "$PLUGIN_DIR"
-            git clone --quiet "$REPO_URL" "$PLUGIN_DIR"
-        fi
-    else
-        git clone --quiet "$REPO_URL" "$PLUGIN_DIR"
-    fi
+    # Create temp directory for cloning and building
+    local tmp_dir=$(mktemp -d)
+    trap "rm -rf $tmp_dir" EXIT
     
-    print_success "Plugin cloned to $PLUGIN_DIR"
-}
-
-build_plugin() {
+    print_info "Cloning repository..."
+    git clone --quiet --depth 1 "$REPO_URL" "$tmp_dir"
+    
     print_info "Building plugin..."
-    
-    cd "$PLUGIN_DIR"
+    cd "$tmp_dir"
     
     if command -v bun &> /dev/null; then
         bun install --silent
@@ -89,8 +79,17 @@ build_plugin() {
         npm run build
         print_success "Built with npm"
     else
-        print_warning "Neither Bun nor npm found"
-        print_info "The plugin will be built automatically by OpenCode on first run"
+        print_error "Neither Bun nor npm found - cannot build plugin"
+        exit 1
+    fi
+    
+    # Copy built plugin to plugins directory
+    if [ -f "$tmp_dir/dist/index.js" ]; then
+        cp "$tmp_dir/dist/index.js" "$PLUGIN_FILE"
+        print_success "Plugin installed to $PLUGIN_FILE"
+    else
+        print_error "Build failed - dist/index.js not found"
+        exit 1
     fi
 }
 
@@ -107,7 +106,7 @@ print_next_steps() {
     echo ""
     echo "  OPENCODE_AUTOTITLE_MODEL=anthropic/claude-haiku-4-5"
     echo "  OPENCODE_AUTOTITLE_MAX_LENGTH=60"
-    echo "  OPENCODE_AUTOTITLE_DEBUG=1"
+    echo "  OPENCODE_AUTOTITLE_DEBUG=debug.log"
     echo ""
     echo -e "${BLUE}Usage:${NC}"
     echo "  Just use OpenCode normally - titles are generated automatically."
@@ -122,7 +121,6 @@ main() {
     
     check_opencode
     install_plugin
-    build_plugin
     print_next_steps
 }
 
