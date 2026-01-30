@@ -9,6 +9,9 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "prepublishOnly": "npm run build"
   },
   "repository": {
@@ -45,7 +48,8 @@
   "devDependencies": {
     "@opencode-ai/plugin": "^1.0.0",
     "@types/node": "^20.0.0",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "vitest": "^4.0.18"
   },
   "peerDependencies": {
     "bun": ">=1.0.0"

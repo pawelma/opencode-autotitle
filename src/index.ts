@@ -516,6 +516,22 @@ function extractMessageContent(event: any): string | null {
   return null
 }
 
+// Export pure functions for testing
+export {
+  isTimestampTitle,
+  hasPluginEmoji,
+  shouldModifyTitle,
+  sanitizeTitle,
+  extractKeywords,
+  inferIntent,
+  generateFallbackTitle,
+  findCheapestFromModels,
+  loadConfig,
+  extractSessionId,
+  extractMessageContent,
+  CHEAP_MODEL_PATTERNS,
+}
+
 export const AutoTitle: Plugin = async ({ client }) => {
   const config = loadConfig()
   const log = createLogger(config.debug, client)
