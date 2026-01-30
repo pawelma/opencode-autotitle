@@ -16,18 +16,19 @@ interface State {
   cheapestModel: { providerID: string; modelID: string } | null | undefined  // null = not yet loaded, undefined = loaded but not found
 }
 
-// Known cheap/fast model patterns - used to identify cheap models from provider's list
+// Known cheap/fast model patterns - ordered by preference
+// Priority: fast (often free) > flash (very cheap) > haiku (cheap) > other cheap patterns
 const CHEAP_MODEL_PATTERNS = [
-  /haiku/i,
+  /fast/i,      // Grok Code Fast, etc. (often free)
+  /flash/i,     // Gemini Flash (very cheap)
+  /haiku/i,     // Claude Haiku (cheap)
   /mini/i,
-  /flash/i,
   /instant/i,
   /small/i,
-  /8b/i,
-  /7b/i,
-  /fast/i,
   /lite/i,
   /turbo/i,
+  /8b/i,
+  /7b/i,
 ]
 
 function findCheapestFromModels(models: any, log: ReturnType<typeof createLogger>): string | null {
