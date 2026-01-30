@@ -2,6 +2,9 @@ import type { Plugin } from "@opencode-ai/plugin"
 import fs from "node:fs"
 import path from "node:path"
 
+// Log immediately when module is loaded (helps debug if plugin is being loaded at all)
+console.error("[autotitle] Module loaded")
+
 // Emoji prefixes for titles
 const EMOJI_KEYWORD = "🔍"  // Used for quick keyword-based titles
 const EMOJI_AI = "✨"       // Used for AI-generated titles
