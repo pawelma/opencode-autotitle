@@ -4,6 +4,14 @@ AI-powered automatic session naming for [OpenCode](https://opencode.ai).
 
 Automatically generates descriptive titles for your OpenCode sessions based on conversation context, replacing generic timestamp-based names like "2024-01-15 14:30" with meaningful descriptions like "Setup React Auth Flow".
 
+## From Timestamp Chaos to Meaningful Titles
+
+| Before | After |
+|--------|-------|
+| ![Before - Timestamp titles](docs/images/before.png) | ![After - Auto-generated titles](docs/images/after.png) |
+
+> **Note:** Currently tested with the GitHub Copilot provider only.
+
 ## Features
 
 - **Two-phase titling**: Instant keyword title on user message, refined AI title after response
