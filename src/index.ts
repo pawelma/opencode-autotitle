@@ -2,6 +2,7 @@ import type { Plugin } from "@opencode-ai/plugin"
 
 interface PluginConfig {
   model: string | null
+  provider: string | null
   maxLength: number
   disabled: boolean
   debug: boolean
@@ -10,12 +11,27 @@ interface PluginConfig {
 interface State {
   titledSessions: Set<string>
   pendingSessions: Set<string>
+  cheapestModel: { providerID: string; modelID: string } | null | undefined  // null = not yet loaded, undefined = loaded but not found
+}
+
+// Known cheap/fast models by provider (fallback if API doesn't provide cost info)
+const CHEAP_MODELS: Record<string, string> = {
+  anthropic: "claude-haiku-4-5",
+  openai: "gpt-4o-mini",
+  google: "gemini-2.0-flash",
+  "github-copilot": "gpt-4o-mini",
+  groq: "llama-3.1-8b-instant",
+  together: "meta-llama/Llama-3-8b-chat-hf",
+  fireworks: "accounts/fireworks/models/llama-v3p1-8b-instruct",
+  deepseek: "deepseek-chat",
+  mistral: "mistral-small-latest",
 }
 
 function loadConfig(): PluginConfig {
   const env = process.env
   return {
     model: env.OPENCODE_AUTOTITLE_MODEL || null,
+    provider: env.OPENCODE_AUTOTITLE_PROVIDER || null,
     maxLength: Number(env.OPENCODE_AUTOTITLE_MAX_LENGTH) || 40,
     disabled: env.OPENCODE_AUTOTITLE_DISABLED === "1" || env.OPENCODE_AUTOTITLE_DISABLED === "true",
     debug: env.OPENCODE_AUTOTITLE_DEBUG === "1" || env.OPENCODE_AUTOTITLE_DEBUG === "true",
@@ -47,6 +63,78 @@ function createLogger(debug: boolean, client?: any) {
     info: (msg: string) => log("info", msg),
     error: (msg: string) => log("error", msg),
   }
+}
+
+async function findCheapestModel(
+  client: any,
+  config: PluginConfig,
+  log: ReturnType<typeof createLogger>
+): Promise<{ providerID: string; modelID: string } | null> {
+  // If explicit model is set, use it
+  if (config.model) {
+    const [providerID, modelID] = config.model.includes("/")
+      ? config.model.split("/", 2)
+      : ["anthropic", config.model]
+    log.debug(`Using configured model: ${providerID}/${modelID}`)
+    return { providerID, modelID }
+  }
+
+  try {
+    const providersResponse = await client.config.providers() as any
+    const providers = providersResponse?.providers || providersResponse?.data?.providers || []
+    const defaults = providersResponse?.default || providersResponse?.data?.default || {}
+    
+    log.debug(`Found ${providers.length} providers`)
+    
+    // If a specific provider is requested, find cheap model for it
+    if (config.provider) {
+      const provider = providers.find((p: any) => p.id === config.provider)
+      if (provider) {
+        // Check if we have a known cheap model for this provider
+        const cheapModel = CHEAP_MODELS[config.provider]
+        if (cheapModel) {
+          // Verify the model exists in provider's models
+          const models = provider.models || []
+          const modelExists = models.some((m: any) => m.id === cheapModel || m.name === cheapModel)
+          if (modelExists) {
+            log.debug(`Using known cheap model for ${config.provider}: ${cheapModel}`)
+            return { providerID: config.provider, modelID: cheapModel }
+          }
+        }
+        // Fall back to first model from provider
+        if (provider.models?.length > 0) {
+          const modelID = provider.models[0].id || provider.models[0].name
+          log.debug(`Using first model from ${config.provider}: ${modelID}`)
+          return { providerID: config.provider, modelID }
+        }
+      }
+    }
+    
+    // Find any available cheap model from known list
+    for (const [providerID, modelID] of Object.entries(CHEAP_MODELS)) {
+      const provider = providers.find((p: any) => p.id === providerID)
+      if (provider) {
+        const models = provider.models || []
+        const modelExists = models.some((m: any) => m.id === modelID || m.name === modelID)
+        if (modelExists) {
+          log.debug(`Found available cheap model: ${providerID}/${modelID}`)
+          return { providerID, modelID }
+        }
+      }
+    }
+    
+    // Last resort: use first provider's default model
+    if (Object.keys(defaults).length > 0) {
+      const providerID = Object.keys(defaults)[0]
+      const modelID = defaults[providerID]
+      log.debug(`Using default model: ${providerID}/${modelID}`)
+      return { providerID, modelID }
+    }
+  } catch (e) {
+    log.debug(`Failed to fetch providers: ${e instanceof Error ? e.message : "unknown"}`)
+  }
+
+  return null
 }
 
 function isTimestampTitle(title: string | undefined): boolean {
@@ -177,6 +265,7 @@ async function generateAITitle(
   sessionId: string,
   userMessage: string,
   assistantMessage: string | null,
+  modelToUse: { providerID: string; modelID: string } | null,
   config: PluginConfig,
   log: ReturnType<typeof createLogger>
 ): Promise<string | null> {
@@ -217,22 +306,19 @@ Rules:
     
     log.debug(`Created temp session ${tempSessionId}, sending prompt`)
     
-    // Build model config - use configured model or let it use default
-    const modelConfig: any = {}
-    if (config.model) {
-      const [providerID, modelID] = config.model.includes("/") 
-        ? config.model.split("/", 2) 
-        : ["anthropic", config.model]
-      modelConfig.model = { providerID, modelID }
+    // Build model config from the resolved model
+    const bodyConfig: any = {
+      parts: [{ type: "text", text: prompt }],
+    }
+    if (modelToUse) {
+      bodyConfig.model = modelToUse
+      log.debug(`Using model: ${modelToUse.providerID}/${modelToUse.modelID}`)
     }
     
     // Use session.prompt which returns AssistantMessage with AI response
     const response = await client.session.prompt({
       path: { id: tempSessionId },
-      body: {
-        ...modelConfig,
-        parts: [{ type: "text", text: prompt }],
-      },
+      body: bodyConfig,
     }) as any
     
     log.debug(`Prompt response: ${JSON.stringify(response).slice(0, 300)}`)
@@ -329,7 +415,11 @@ export const AutoTitle: Plugin = async ({ client }) => {
   const state: State = {
     titledSessions: new Set(),
     pendingSessions: new Set(),
+    cheapestModel: null,
   }
+
+  // Find cheapest model lazily on first use, not during init
+  // This prevents blocking plugin load if providers API is slow/unavailable
 
   log.info("AutoTitle plugin initialized")
 
@@ -437,8 +527,21 @@ export const AutoTitle: Plugin = async ({ client }) => {
           log.debug(`Assistant message: ${assistantMessage.slice(0, 100)}...`)
         }
 
+        // Lazily find cheapest model on first use
+        if (state.cheapestModel === null) {
+          try {
+            const found = await findCheapestModel(client, config, log)
+            state.cheapestModel = found ?? undefined  // undefined means "tried but not found"
+            if (state.cheapestModel) {
+              log.debug(`Using model: ${state.cheapestModel.providerID}/${state.cheapestModel.modelID}`)
+            }
+          } catch {
+            state.cheapestModel = undefined  // Mark as tried
+          }
+        }
+
         // Try AI generation first, fall back to keyword extraction
-        let title = await generateAITitle(client, sessionId, userMessage, assistantMessage, config, log)
+        let title = await generateAITitle(client, sessionId, userMessage, assistantMessage, state.cheapestModel ?? null, config, log)
         
         if (!title) {
           log.debug("AI generation failed or unavailable, using fallback")
