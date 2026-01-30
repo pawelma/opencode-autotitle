@@ -76,26 +76,40 @@ The plugin works out of the box with sensible defaults. For customization, set e
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `OPENCODE_AUTOTITLE_MODEL` | (auto) | Model ID like `anthropic/claude-haiku-4-5` |
-| `OPENCODE_AUTOTITLE_MAX_LENGTH` | `40` | Maximum title character length |
+| `OPENCODE_AUTOTITLE_MAX_LENGTH` | `60` | Maximum title character length |
 | `OPENCODE_AUTOTITLE_DISABLED` | `false` | Set to `1` to disable |
-| `OPENCODE_AUTOTITLE_DEBUG` | `false` | Set to `1` for debug logging |
+| `OPENCODE_AUTOTITLE_DEBUG` | `false` | Set to `1` for stderr logging, or a file path (e.g., `debug.log`) |
+
+**Model selection:** By default, the plugin auto-discovers the cheapest available model from your connected providers (preferring `fast`, `flash`, `haiku`, `mini` patterns).
 
 Example (add to shell profile):
 
 ```bash
 export OPENCODE_AUTOTITLE_MODEL="anthropic/claude-haiku-4-5"
-export OPENCODE_AUTOTITLE_DEBUG="1"
+export OPENCODE_AUTOTITLE_DEBUG="debug.log"
+```
+
+To view debug logs in real-time, run in another terminal:
+```bash
+tail -f debug.log
 ```
 
 ### Step 4: Verify Installation
 
 1. Start OpenCode: `opencode`
 2. Send any message to start a conversation
-3. After the AI responds, check the session title - it should be automatically updated
+3. The session title should update immediately with a 🔍 keyword-based title
+4. After the AI responds, the title should be refined with a ✨ AI-generated title
 
-If using debug mode, you'll see log messages like:
+If using debug mode with a log file, check output in another terminal:
+```bash
+tail -f debug.log
 ```
-[autotitle] Updated session abc123 title to: Setup React Auth
+
+You'll see messages like:
+```
+[autotitle] Set keyword title: 🔍 React Auth Setup
+[autotitle] Set AI title: ✨ Setup React Authentication Flow
 ```
 
 ### Troubleshooting
@@ -106,13 +120,14 @@ If using debug mode, you'll see log messages like:
 - Run `opencode --version` to ensure OpenCode is working
 
 **Titles not generating:**
-- Enable debug mode: `export OPENCODE_AUTOTITLE_DEBUG=1`
-- Check logs for errors
-- Ensure your session has at least one user message and one AI response
+- Enable debug mode: `export OPENCODE_AUTOTITLE_DEBUG=debug.log`
+- View logs in another terminal: `tail -f debug.log`
+- Keyword titles (🔍) appear immediately on user message
+- AI titles (✨) appear after the AI responds
 
 **AI title generation failing:**
-- The plugin will fall back to keyword extraction automatically
-- If you want AI titles, ensure your OpenCode has a working model configured
+- Keyword titles will still work (Phase 1)
+- For AI titles, ensure your OpenCode has a working model configured
 
 ### Done!
 

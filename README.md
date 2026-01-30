@@ -6,9 +6,9 @@ Automatically generates descriptive titles for your OpenCode sessions based on c
 
 ## Features
 
-- **Automatic naming**: Sessions titled after first AI response
-- **AI-powered**: Uses your configured model to generate contextual titles
-- **Smart fallback**: Keyword extraction when AI is unavailable
+- **Two-phase titling**: Instant keyword title on user message, refined AI title after response
+- **AI-powered**: Auto-selects cheapest available model (flash/haiku/fast) for title generation
+- **Instant feedback**: Keyword-based title appears immediately, no waiting for AI
 - **Zero configuration**: Works out of the box with sensible defaults
 - **Non-blocking**: Runs in the background, never slows your workflow
 - **Respects custom titles**: Won't overwrite manually set session names
@@ -55,15 +55,71 @@ bun install && bun run build
 
 ## How It Works
 
-1. **Listens** for the `session.idle` event (after AI responds)
-2. **Checks** if the session has a default/timestamp title
-3. **Extracts** the first user message from the session
-4. **Generates** a title using AI or keyword extraction
-5. **Updates** the session title via OpenCode SDK
+The plugin uses a **two-phase approach** for instant feedback with quality refinement:
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         OPENCODE SESSION                                │
+└─────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│  PHASE 1: Quick Title (on message.part.updated)                         │
+│  ───────────────────────────────────────────────────────────────────────│
+│                                                                         │
+│   User types message ──► Extract keywords ──► Set title immediately     │
+│                                                                         │
+│   "Help me set up JWT auth"  ──►  "🔍 Jwt Auth Express"                 │
+│                                                                         │
+│   • No API call needed                                                  │
+│   • Instant title update                                                │
+│   • Uses keyword extraction + stop word filtering                       │
+└─────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│  PHASE 2: AI Title (on session.idle)                                    │
+│  ───────────────────────────────────────────────────────────────────────│
+│                                                                         │
+│   AI responds ──► Find cheap model ──► Generate title ──► Update        │
+│                                                                         │
+│   Context: user question + AI response                                  │
+│                                                                         │
+│   "🔍 Jwt Auth Express"  ──►  "✨ Setup JWT Auth Express"               │
+│                                                                         │
+│   • Uses cheapest available model (flash/haiku/fast)                    │
+│   • Creates temp session for title generation                           │
+│   • More specific title based on actual conversation                    │
+└─────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│  RESULT                                                                 │
+│  ───────────────────────────────────────────────────────────────────────│
+│                                                                         │
+│   🔍 = Keyword-based title (fast fallback)                              │
+│   ✨ = AI-generated title (final quality)                               │
+│                                                                         │
+│   Custom user titles are never overwritten                              │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### State Management
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                      Plugin State                            │
+├──────────────────────────────────────────────────────────────┤
+│  keywordTitledSessions: Set<string>   ← Has 🔍 title         │
+│  aiTitledSessions: Set<string>        ← Has ✨ title (done)  │
+│  pendingAISessions: Set<string>       ← Currently processing │
+│  cheapestModel: cached model choice   ← Lazily discovered    │
+└──────────────────────────────────────────────────────────────┘
+```
 
 ### Title Generation
 
-The plugin tries AI generation first, then falls back to keyword extraction:
+Phase 1 sets a quick keyword title, Phase 2 refines it with AI:
 
 | User Message | Generated Title |
 |--------------|-----------------|
@@ -81,13 +137,13 @@ All configuration is optional. The plugin works out of the box.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `OPENCODE_AUTOTITLE_MODEL` | (auto) | Model ID like `anthropic/claude-haiku-4-5` |
-| `OPENCODE_AUTOTITLE_MAX_LENGTH` | `40` | Maximum title character length |
+| `OPENCODE_AUTOTITLE_MAX_LENGTH` | `60` | Maximum title character length |
 | `OPENCODE_AUTOTITLE_DISABLED` | `false` | Set to `1` to disable the plugin |
 | `OPENCODE_AUTOTITLE_DEBUG` | `false` | Set to `1` for stderr logging, or a file path (e.g., `debug.log`) |
 
 ### Model Selection
 
-By default, the plugin uses your session's configured model. To use a specific (cheaper/faster) model for title generation:
+By default, the plugin auto-discovers the cheapest available model from your connected providers, preferring models with names like `fast`, `flash`, `haiku`, or `mini`. To use a specific model for title generation:
 
 ```bash
 export OPENCODE_AUTOTITLE_MODEL="anthropic/claude-haiku-4-5"
