@@ -1,0 +1,58 @@
+{
+  "name": "opencode-autotitle",
+  "version": "1.0.0",
+  "description": "AI-powered automatic session naming for OpenCode - titles your sessions based on context",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pawelma/opencode-autotitle.git"
+  },
+  "bugs": {
+    "url": "https://github.com/pawelma/opencode-autotitle/issues"
+  },
+  "homepage": "https://github.com/pawelma/opencode-autotitle#readme",
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "session",
+    "title",
+    "auto-title",
+    "autotitle",
+    "naming",
+    "ai",
+    "automatic",
+    "smart-title",
+    "session-name",
+    "session-management",
+    "productivity",
+    "developer-tools",
+    "cli",
+    "terminal"
+  ],
+  "author": "Pawel Madejski",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "@opencode-ai/plugin": "^1.0.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "peerDependencies": {
+    "bun": ">=1.0.0"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ]
+}
