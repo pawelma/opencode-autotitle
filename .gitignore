@@ -23,5 +23,4 @@ npm-debug.log*
 .env.local
 
 # Package manager locks (keep bun.lockb if using bun)
-package-lock.json
 yarn.lock
