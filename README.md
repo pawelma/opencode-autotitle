@@ -1,5 +1,9 @@
 # opencode-autotitle
 
+[![CI](https://github.com/pawelma/opencode-autotitle/actions/workflows/ci.yml/badge.svg)](https://github.com/pawelma/opencode-autotitle/actions/workflows/ci.yml)
+[![Publish to npm](https://github.com/pawelma/opencode-autotitle/actions/workflows/publish.yml/badge.svg)](https://github.com/pawelma/opencode-autotitle/actions/workflows/publish.yml)
+[![npm version](https://img.shields.io/npm/v/opencode-autotitle.svg)](https://www.npmjs.com/package/opencode-autotitle)
+
 AI-powered automatic session naming for [OpenCode](https://opencode.ai).
 
 Automatically generates descriptive titles for your OpenCode sessions based on conversation context, replacing generic timestamp-based names like "2024-01-15 14:30" with meaningful descriptions like "Setup React Auth Flow".
