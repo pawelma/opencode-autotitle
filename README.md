@@ -10,8 +10,6 @@ Automatically generates descriptive titles for your OpenCode sessions based on c
 |--------|-------|
 | ![Before - Timestamp titles](docs/images/before.png) | ![After - Auto-generated titles](docs/images/after.png) |
 
-> **Note:** Currently tested with the GitHub Copilot provider only.
-
 ## Features
 
 - **Two-phase titling**: Instant keyword title on user message, refined AI title after response
@@ -236,3 +234,5 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 3. Commit your changes (`git commit -m 'Add amazing feature'`)
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
+
+> **Note:** Currently tested with the GitHub Copilot provider only.
