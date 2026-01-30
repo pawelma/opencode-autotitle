@@ -1,6 +1,6 @@
 {
   "name": "opencode-autotitle",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "AI-powered automatic session naming for OpenCode - titles your sessions based on context",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
