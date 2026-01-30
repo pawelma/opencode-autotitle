@@ -1,11 +1,13 @@
 import type { Plugin } from "@opencode-ai/plugin"
+import fs from "node:fs"
+import path from "node:path"
 
 interface PluginConfig {
   model: string | null
   provider: string | null
   maxLength: number
   disabled: boolean
-  debug: boolean
+  debug: boolean | string  // true, false, or path to log file
 }
 
 interface State {
@@ -61,22 +63,68 @@ function findCheapestFromModels(models: any, log: ReturnType<typeof createLogger
 
 function loadConfig(): PluginConfig {
   const env = process.env
+  const debugEnv = env.OPENCODE_AUTOTITLE_DEBUG
+  
+  // Debug can be: "1", "true" (enable stderr), or a file path
+  let debug: boolean | string = false
+  if (debugEnv) {
+    if (debugEnv === "1" || debugEnv === "true") {
+      debug = true
+    } else if (debugEnv !== "0" && debugEnv !== "false") {
+      // Treat as file path
+      debug = debugEnv
+    }
+  }
+  
   return {
     model: env.OPENCODE_AUTOTITLE_MODEL || null,
     provider: env.OPENCODE_AUTOTITLE_PROVIDER || null,
     maxLength: Number(env.OPENCODE_AUTOTITLE_MAX_LENGTH) || 40,
     disabled: env.OPENCODE_AUTOTITLE_DISABLED === "1" || env.OPENCODE_AUTOTITLE_DISABLED === "true",
-    debug: env.OPENCODE_AUTOTITLE_DEBUG === "1" || env.OPENCODE_AUTOTITLE_DEBUG === "true",
+    debug,
   }
 }
 
-function createLogger(debug: boolean, client?: any) {
+function createLogger(debug: boolean | string, client?: any) {
+  const isEnabled = !!debug
+  const logFile = typeof debug === "string" ? debug : null
+  
+  // If logging to file, resolve path and ensure directory exists
+  let logPath: string | null = null
+  if (logFile) {
+    logPath = path.isAbsolute(logFile) ? logFile : path.resolve(process.cwd(), logFile)
+    try {
+      const dir = path.dirname(logPath)
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true })
+      }
+      // Clear log file on startup
+      fs.writeFileSync(logPath, `[autotitle] Log started at ${new Date().toISOString()}\n`)
+    } catch {
+      // Fall back to stderr if file creation fails
+      logPath = null
+    }
+  }
+  
   const log = (level: string, msg: string) => {
     // Only show debug and info when debug mode is enabled
-    if ((level === "debug" || level === "info") && !debug) return
+    if ((level === "debug" || level === "info") && !isEnabled) return
     
-    // Log to stderr
-    console.error(`[autotitle] ${level.toUpperCase()}: ${msg}`)
+    const timestamp = new Date().toISOString()
+    const line = `[autotitle] ${timestamp} ${level.toUpperCase()}: ${msg}`
+    
+    if (logPath) {
+      // Append to log file
+      try {
+        fs.appendFileSync(logPath, line + "\n")
+      } catch {
+        // Fallback to stderr
+        console.error(line)
+      }
+    } else if (isEnabled || level === "error") {
+      // Log to stderr
+      console.error(line)
+    }
     
     // Also use client.app.log if available
     if (client?.app?.log) {
