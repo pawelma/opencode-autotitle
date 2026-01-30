@@ -266,7 +266,7 @@ function shouldModifyTitle(title: string | undefined): boolean {
 
 function sanitizeTitle(title: string, maxLength: number): string {
   return title
-    .replace(/[^\w\s-]/g, "")
+    .replace(/[^\w\s.\-]/g, "")  // Keep dots for filenames like AGENTS.md
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, maxLength)
@@ -391,7 +391,7 @@ ${context}
 
 Rules:
 - MUST NOT exceed ${config.maxLength} characters - this is a hard limit
-- No quotes or special punctuation
+- No quotes or special punctuation (but keep dots in filenames like AGENTS.md, package.json)
 - Use title case
 - Be SPECIFIC about the actual content discussed (e.g., "British Shorthair Cat Photo" not "Image Identification")
 - If the response mentions specific things (names, technologies, animals, etc.), include them
