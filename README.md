@@ -148,20 +148,7 @@ By default, the plugin auto-discovers the cheapest available model from your con
 export OPENCODE_AUTOTITLE_MODEL="anthropic/claude-haiku-4-5"
 ```
 
-## Troubleshooting
-
-### Plugin not loading
-
-1. Check installation location:
-   ```bash
-   ls ~/.config/opencode/plugins/opencode-autotitle/dist/
-   ```
-2. Or verify in config:
-   ```bash
-   cat ~/.config/opencode/opencode.json | grep autotitle
-   ```
-
-### Titles not generating
+## Debugging
 
 Enable debug mode to see what's happening:
 
@@ -172,14 +159,6 @@ opencode
 ```
 
 Look for `[autotitle]` messages in the output.
-
-### AI generation failing
-
-The plugin automatically falls back to keyword extraction. If you want to fix AI generation:
-
-1. Verify your model is configured: `opencode /models`
-2. Check the model ID format: `provider/model-name`
-3. Ensure API keys are set for your provider
 
 ## Development
 
