@@ -12,27 +12,6 @@ interface State {
   pendingSessions: Set<string>
 }
 
-interface SessionEvent {
-  type: string
-  properties?: {
-    sessionID?: string
-    info?: {
-      id?: string
-      title?: string
-    }
-  }
-}
-
-interface Message {
-  info: {
-    role: string
-  }
-  parts: Array<{
-    type: string
-    text?: string
-  }>
-}
-
 function loadConfig(): PluginConfig {
   const env = process.env
   return {
@@ -43,11 +22,30 @@ function loadConfig(): PluginConfig {
   }
 }
 
-function createLogger(debug: boolean) {
+function createLogger(debug: boolean, client?: any) {
+  const log = (level: string, msg: string) => {
+    // Only show debug and info when debug mode is enabled
+    if ((level === "debug" || level === "info") && !debug) return
+    
+    // Log to stderr
+    console.error(`[autotitle] ${level.toUpperCase()}: ${msg}`)
+    
+    // Also use client.app.log if available
+    if (client?.app?.log) {
+      client.app.log({
+        body: {
+          service: "autotitle",
+          level: level as "debug" | "info" | "warn" | "error",
+          message: msg,
+        },
+      }).catch(() => {})
+    }
+  }
+  
   return {
-    debug: (msg: string) => debug && console.error(`[autotitle] ${msg}`),
-    error: (msg: string) => console.error(`[autotitle] ERROR: ${msg}`),
-    info: (msg: string) => debug && console.error(`[autotitle] ${msg}`),
+    debug: (msg: string) => log("debug", msg),
+    info: (msg: string) => log("info", msg),
+    error: (msg: string) => log("error", msg),
   }
 }
 
@@ -58,11 +56,11 @@ function isTimestampTitle(title: string | undefined): boolean {
   const timestampPatterns = [
     /^\d{4}-\d{2}-\d{2}/, // 2024-01-15...
     /^\d{1,2}\/\d{1,2}\/\d{2,4}/, // 1/15/24 or 01/15/2024
-    /^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2}/i, // Jan 15...
-    /^\d{1,2}\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/i, // 15 Jan...
-    /^Session\s+\d+/i, // Session 1, Session 2...
-    /^New\s+Session/i, // New Session
-    /^Untitled/i, // Untitled
+    /^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2}/i,
+    /^\d{1,2}\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/i,
+    /^Session\s+\d+/i,
+    /^New\s+Session/i,
+    /^Untitled/i,
   ]
   
   return timestampPatterns.some(pattern => pattern.test(title.trim()))
@@ -70,8 +68,8 @@ function isTimestampTitle(title: string | undefined): boolean {
 
 function sanitizeTitle(title: string, maxLength: number): string {
   return title
-    .replace(/[^\w\s-]/g, "") // Remove special characters except hyphen
-    .replace(/\s+/g, " ") // Normalize whitespace
+    .replace(/[^\w\s-]/g, "")
+    .replace(/\s+/g, " ")
     .trim()
     .slice(0, maxLength)
 }
@@ -92,23 +90,31 @@ function extractKeywords(text: string): string[] {
     "you", "your", "he", "him", "his", "she", "her", "it", "its",
     "they", "them", "their", "what", "which", "who", "whom", "please",
     "help", "want", "like", "make", "create", "write", "add", "get",
+    // Additional common verbs that don't add meaning
+    "came", "come", "goes", "going", "went", "give", "gave", "take", "took",
+    "put", "see", "saw", "know", "knew", "think", "thought", "tell", "told",
+    "ask", "asked", "use", "used", "find", "found", "let", "try", "tried",
+    "look", "looking", "need", "needed", "seem", "seemed", "work", "working",
   ])
 
+  // Return words in order they appear (preserving sequence), not by frequency
   const words = text
     .toLowerCase()
     .replace(/[^\w\s]/g, " ")
     .split(/\s+/)
     .filter(word => word.length > 2 && !stopWords.has(word))
 
-  const wordCounts = new Map<string, number>()
+  // Remove duplicates while preserving order
+  const seen = new Set<string>()
+  const uniqueWords: string[] = []
   for (const word of words) {
-    wordCounts.set(word, (wordCounts.get(word) || 0) + 1)
+    if (!seen.has(word)) {
+      seen.add(word)
+      uniqueWords.push(word)
+    }
   }
 
-  return Array.from(wordCounts.entries())
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5)
-    .map(([word]) => word)
+  return uniqueWords.slice(0, 6)
 }
 
 function inferIntent(text: string): string {
@@ -132,25 +138,35 @@ function inferIntent(text: string): string {
 
 function generateFallbackTitle(text: string, maxLength: number): string {
   const keywords = extractKeywords(text)
-  const intent = inferIntent(text)
   
-  if (keywords.length === 0) {
-    return "New Session"
+  // Debug logging handled by caller
+  
+  // For very short inputs, try to use the whole message as-is
+  const cleanedText = text.replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim()
+  if (cleanedText.length <= maxLength && cleanedText.length > 3) {
+    // Capitalize first letter of each word for title case
+    const titleCased = cleanedText
+      .split(" ")
+      .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+      .join(" ")
+    return titleCased
   }
   
-  let title = ""
+  if (keywords.length === 0) {
+    return ""
+  }
   
-  if (intent) {
-    title = intent.charAt(0).toUpperCase() + intent.slice(1)
-    const remainingKeywords = keywords.filter(k => k !== intent.toLowerCase())
-    if (remainingKeywords.length > 0) {
-      title += " " + remainingKeywords.slice(0, 2).join(" ")
+  // Join keywords in order (they're already in original word order)
+  // Take enough keywords to fit in maxLength
+  let title = ""
+  for (const keyword of keywords) {
+    const capitalized = keyword.charAt(0).toUpperCase() + keyword.slice(1)
+    const potential = title ? `${title} ${capitalized}` : capitalized
+    if (potential.length <= maxLength) {
+      title = potential
+    } else {
+      break
     }
-  } else {
-    title = keywords
-      .slice(0, 3)
-      .map(w => w.charAt(0).toUpperCase() + w.slice(1))
-      .join(" ")
   }
   
   return sanitizeTitle(title, maxLength)
@@ -158,90 +174,155 @@ function generateFallbackTitle(text: string, maxLength: number): string {
 
 async function generateAITitle(
   client: any,
-  text: string,
+  sessionId: string,
+  userMessage: string,
+  assistantMessage: string | null,
   config: PluginConfig,
   log: ReturnType<typeof createLogger>
 ): Promise<string | null> {
-  const prompt = `Generate a concise session title (3-6 words max) that captures the main task or topic.
+  // Build context from both user question and assistant response
+  let context = `User asked: "${userMessage.slice(0, 300)}"`
+  if (assistantMessage) {
+    context += `\n\nAssistant responded: "${assistantMessage.slice(0, 400)}"`
+  }
+  
+  const prompt = `Generate a concise, specific title (3-6 words) for this conversation:
 
-User's message:
-"${text.slice(0, 500)}"
+${context}
 
 Rules:
 - Maximum ${config.maxLength} characters
-- No quotes, colons, or special characters
-- Descriptive but brief (like a git commit subject)
-- Focus on the WHAT, not the HOW
+- No quotes or special punctuation
+- Use title case
+- Be SPECIFIC about the actual content discussed (e.g., "British Shorthair Cat Photo" not "Image Identification")
+- If the response mentions specific things (names, technologies, animals, etc.), include them
+- If there's a ticket/issue reference (JIRA like ABC-123, GitHub PR #123, Trello, Linear, etc.), include it as a prefix (e.g., "ABC-123 Fix Login Bug")
 - Return ONLY the title, nothing else`
 
+  let tempSessionId: string | null = null
+  
   try {
-    const modelConfig = config.model 
-      ? { providerID: config.model.split("/")[0], modelID: config.model.split("/")[1] }
-      : undefined
-
-    log.debug(`Generating title with model: ${config.model || "default"}`)
-
+    log.debug("Creating temp session for AI title generation")
+    
+    // Create temp session using the correct SDK pattern
+    const tempSession = await client.session.create({
+      body: { title: "autotitle-temp" }
+    }) as any
+    tempSessionId = tempSession?.id || tempSession?.data?.id
+    
+    if (!tempSessionId) {
+      log.debug(`Failed to create temp session: ${JSON.stringify(tempSession).slice(0, 200)}`)
+      return null
+    }
+    
+    log.debug(`Created temp session ${tempSessionId}, sending prompt`)
+    
+    // Build model config - use configured model or let it use default
+    const modelConfig: any = {}
+    if (config.model) {
+      const [providerID, modelID] = config.model.includes("/") 
+        ? config.model.split("/", 2) 
+        : ["anthropic", config.model]
+      modelConfig.model = { providerID, modelID }
+    }
+    
+    // Use session.prompt which returns AssistantMessage with AI response
     const response = await client.session.prompt({
-      path: { id: "temp-title-gen" },
+      path: { id: tempSessionId },
       body: {
-        model: modelConfig,
+        ...modelConfig,
         parts: [{ type: "text", text: prompt }],
-        noReply: false,
       },
-    })
-
-    if (response?.parts?.[0]?.text) {
-      const title = sanitizeTitle(response.parts[0].text, config.maxLength)
-      log.debug(`AI generated title: ${title}`)
+    }) as any
+    
+    log.debug(`Prompt response: ${JSON.stringify(response).slice(0, 300)}`)
+    
+    // Extract text from response parts
+    const parts = response?.parts || response?.data?.parts || []
+    for (const part of parts) {
+      if (part?.type === "text" && part?.text) {
+        const responseText = part.text.trim()
+        log.debug(`Got AI text: "${responseText.slice(0, 100)}"`)
+        
+        // Take first line as title
+        const lines = responseText.split("\n").filter((l: string) => l.trim())
+        const titleCandidate = lines[0] || responseText
+        
+        if (titleCandidate.length > 0 && titleCandidate.length <= config.maxLength + 20) {
+          const title = sanitizeTitle(titleCandidate, config.maxLength)
+          log.debug(`AI generated title: "${title}"`)
+          
+          // Cleanup temp session
+          await client.session.delete({ path: { id: tempSessionId } }).catch(() => {})
+          return title
+        }
+      }
+    }
+    
+    // Also try response.content pattern
+    if (response?.content) {
+      const title = sanitizeTitle(response.content, config.maxLength)
+      log.debug(`AI generated title (content): "${title}"`)
+      await client.session.delete({ path: { id: tempSessionId } }).catch(() => {})
       return title
     }
+    
+    log.debug("No valid title in AI response")
   } catch (e) {
-    log.debug(`AI title generation failed: ${e instanceof Error ? e.message : "unknown"}`)
+    log.debug(`AI generation failed: ${e instanceof Error ? e.message : "unknown"}`)
+  } finally {
+    // Always try to cleanup temp session
+    if (tempSessionId) {
+      await client.session.delete({ path: { id: tempSessionId } }).catch(() => {})
+    }
   }
 
   return null
 }
 
-async function getFirstUserMessage(
-  client: any,
-  sessionId: string,
-  log: ReturnType<typeof createLogger>
-): Promise<string | null> {
-  try {
-    const messagesResponse = await client.session.messages({
-      path: { id: sessionId },
-    })
+// Extract session ID from various event structures
+function extractSessionId(event: any): string | null {
+  // Try various paths where session ID might be
+  return (
+    event?.properties?.sessionID ||
+    event?.properties?.session?.id ||
+    event?.properties?.info?.id ||
+    event?.sessionID ||
+    event?.session?.id ||
+    null
+  )
+}
 
-    if (!messagesResponse?.data) {
-      log.debug("No messages data in response")
-      return null
-    }
-
-    const messages = messagesResponse.data as Message[]
-    
-    for (const msg of messages) {
-      if (msg.info?.role === "user") {
-        for (const part of msg.parts || []) {
-          if (part.type === "text" && part.text) {
-            log.debug(`Found user message: ${part.text.slice(0, 100)}...`)
-            return part.text
-          }
+// Extract user message content from event
+function extractMessageContent(event: any): string | null {
+  // Try to get content from event properties
+  const messages = event?.properties?.messages || event?.messages || []
+  
+  for (const msg of messages) {
+    if (msg?.role === "user" || msg?.info?.role === "user") {
+      // Try different content locations
+      if (typeof msg.content === "string") return msg.content
+      if (typeof msg.text === "string") return msg.text
+      
+      // Check parts array
+      const parts = msg.parts || []
+      for (const part of parts) {
+        if (part?.type === "text" && part?.text) {
+          return part.text
         }
       }
     }
-  } catch (e) {
-    log.debug(`Failed to get messages: ${e instanceof Error ? e.message : "unknown"}`)
   }
-
+  
   return null
 }
 
 export const AutoTitle: Plugin = async ({ client }) => {
   const config = loadConfig()
-  const log = createLogger(config.debug)
+  const log = createLogger(config.debug, client)
 
   if (config.disabled) {
-    log.info("Plugin is disabled")
+    log.info("Plugin is disabled via OPENCODE_AUTOTITLE_DISABLED")
     return {}
   }
 
@@ -254,17 +335,26 @@ export const AutoTitle: Plugin = async ({ client }) => {
 
   return {
     event: async ({ event }: { event: unknown }) => {
-      const sessionEvent = event as SessionEvent
+      const e = event as any
       
-      if (sessionEvent.type !== "session.idle") {
+      // Log all events in debug mode to understand structure
+      if (config.debug) {
+        log.debug(`Event received: ${e?.type} - ${JSON.stringify(e).slice(0, 500)}`)
+      }
+      
+      if (e?.type !== "session.idle") {
         return
       }
 
-      const sessionId = sessionEvent.properties?.sessionID || sessionEvent.properties?.info?.id
+      log.debug("Processing session.idle event")
+
+      const sessionId = extractSessionId(e)
       if (!sessionId) {
-        log.debug("No session ID in event")
+        log.debug(`No session ID found in event: ${JSON.stringify(e).slice(0, 300)}`)
         return
       }
+
+      log.debug(`Session ID: ${sessionId}`)
 
       if (state.titledSessions.has(sessionId)) {
         log.debug(`Session ${sessionId} already titled, skipping`)
@@ -272,53 +362,115 @@ export const AutoTitle: Plugin = async ({ client }) => {
       }
 
       if (state.pendingSessions.has(sessionId)) {
-        log.debug(`Session ${sessionId} already pending, skipping`)
+        log.debug(`Session ${sessionId} already being processed, skipping`)
         return
       }
 
       state.pendingSessions.add(sessionId)
 
       try {
+        // Get session info to check current title
+        log.debug(`Fetching session info for ${sessionId}`)
         const sessionResponse = await client.session.get({
           path: { id: sessionId },
-        })
-
-        const currentTitle = sessionResponse?.data?.title
+        }) as any
+        
+        log.debug(`Session response: ${JSON.stringify(sessionResponse).slice(0, 300)}`)
+        
+        // Handle different response structures
+        const sessionData = sessionResponse?.data || sessionResponse
+        const currentTitle = sessionData?.title as string | undefined
+        
+        log.debug(`Current title: ${currentTitle}`)
         
         if (!isTimestampTitle(currentTitle)) {
-          log.debug(`Session ${sessionId} already has custom title: ${currentTitle}`)
+          log.debug(`Session already has custom title: ${currentTitle}`)
           state.titledSessions.add(sessionId)
           state.pendingSessions.delete(sessionId)
           return
         }
 
-        const userMessage = await getFirstUserMessage(client, sessionId, log)
+        // Fetch messages from API to get both user question and assistant response
+        let userMessage: string | null = null
+        let assistantMessage: string | null = null
+        
+        log.debug("Fetching messages from API")
+        try {
+          const messagesResponse = await client.session.messages({
+            path: { id: sessionId },
+          }) as any
+          
+          log.debug(`Messages response: ${JSON.stringify(messagesResponse).slice(0, 500)}`)
+          
+          const messages = messagesResponse?.data || messagesResponse || []
+          
+          for (const msg of (messages as any[])) {
+            const role = msg?.info?.role || msg?.role
+            const parts = msg?.parts || []
+            
+            for (const part of parts) {
+              if (part?.type === "text" && part?.text) {
+                if (role === "user" && !userMessage) {
+                  userMessage = part.text
+                } else if (role === "assistant" && !assistantMessage) {
+                  assistantMessage = part.text
+                }
+                break
+              }
+            }
+            
+            // Stop once we have both
+            if (userMessage && assistantMessage) break
+          }
+        } catch (msgErr) {
+          log.debug(`Failed to fetch messages: ${msgErr instanceof Error ? msgErr.message : "unknown"}`)
+        }
+
         if (!userMessage) {
           log.debug(`No user message found for session ${sessionId}`)
           state.pendingSessions.delete(sessionId)
           return
         }
 
-        let title: string | null = null
-
-        title = await generateAITitle(client, userMessage, config, log)
-
-        if (!title) {
-          log.debug("AI generation failed, using fallback")
-          title = generateFallbackTitle(userMessage, config.maxLength)
+        log.debug(`User message: ${userMessage.slice(0, 100)}...`)
+        if (assistantMessage) {
+          log.debug(`Assistant message: ${assistantMessage.slice(0, 100)}...`)
         }
 
-        if (title && title !== "New Session") {
-          await client.session.update({
+        // Try AI generation first, fall back to keyword extraction
+        let title = await generateAITitle(client, sessionId, userMessage, assistantMessage, config, log)
+        
+        if (!title) {
+          log.debug("AI generation failed or unavailable, using fallback")
+          title = generateFallbackTitle(userMessage, config.maxLength)
+        }
+        
+        if (!title) {
+          log.debug("Could not generate title from message")
+          state.pendingSessions.delete(sessionId)
+          return
+        }
+
+        log.info(`Generated title: ${title}`)
+
+        // Update session title
+        try {
+          const updateResponse = await client.session.update({
             path: { id: sessionId },
             body: { title },
           })
+          log.debug(`Update response: ${JSON.stringify(updateResponse).slice(0, 200)}`)
           log.info(`Updated session ${sessionId} title to: ${title}`)
+        } catch (updateErr) {
+          log.error(`Failed to update session title: ${updateErr instanceof Error ? updateErr.message : "unknown"}`)
         }
 
         state.titledSessions.add(sessionId)
-      } catch (e) {
-        log.error(`Failed to process session ${sessionId}: ${e instanceof Error ? e.message : "unknown"}`)
+      } catch (err) {
+        log.error(`Failed to process session ${sessionId}: ${err instanceof Error ? err.message : "unknown"}`)
+        if (err instanceof Error && err.stack) {
+          log.debug(`Stack: ${err.stack}`)
+        }
       } finally {
         state.pendingSessions.delete(sessionId)
       }
