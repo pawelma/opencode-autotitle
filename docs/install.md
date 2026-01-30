@@ -33,7 +33,9 @@ If OpenCode is not installed, guide the user to install it first:
 
 ### Step 2: Install the Plugin
 
-**Option A: Local plugins directory (recommended for development)**
+**Option A: Local plugins directory (recommended)**
+
+Plugins in `~/.config/opencode/plugins/` are auto-discovered by OpenCode - no config changes needed.
 
 ```bash
 # Create plugins directory if it doesn't exist
@@ -50,24 +52,7 @@ bun install && bun run build
 # Or with npm: npm install && npm run build
 ```
 
-**Option B: Add to config (npm - simpler)**
-
-Edit `~/.config/opencode/opencode.json` and add to the plugin array:
-
-```json
-{
-  "plugin": ["opencode-autotitle"]
-}
-```
-
-If the file doesn't exist or doesn't have a plugin array, create it:
-
-```json
-{
-  "$schema": "https://opencode.ai/config.json",
-  "plugin": ["opencode-autotitle"]
-}
-```
+**Note:** Do NOT add local plugins to `opencode.json` - they are loaded automatically from the plugins directory.
 
 ### Step 3: Optional Configuration
 
@@ -116,8 +101,8 @@ You'll see messages like:
 
 **Plugin not loading:**
 - Check that the plugin is in `~/.config/opencode/plugins/opencode-autotitle/` with built files in `dist/`
-- Or verify it's listed in `opencode.json` plugin array
 - Run `opencode --version` to ensure OpenCode is working
+- Do NOT add to `opencode.json` - local plugins are auto-discovered
 
 **Titles not generating:**
 - Enable debug mode: `export OPENCODE_AUTOTITLE_DEBUG=debug.log`

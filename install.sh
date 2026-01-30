@@ -94,71 +94,6 @@ build_plugin() {
     fi
 }
 
-add_to_config() {
-    local config_file="$HOME/.config/opencode/opencode.json"
-    
-    print_info "Adding plugin to OpenCode config..."
-    
-    # Create config directory if it doesn't exist
-    mkdir -p "$HOME/.config/opencode"
-    
-    # If config file doesn't exist, create it with the plugin
-    if [ ! -f "$config_file" ]; then
-        cat > "$config_file" << 'EOF'
-{
-  "$schema": "https://opencode.ai/config.json",
-  "plugin": ["opencode-autotitle"]
-}
-EOF
-        print_success "Created $config_file with plugin"
-        return
-    fi
-    
-    # Check if plugin is already in config
-    if grep -q "opencode-autotitle" "$config_file" 2>/dev/null; then
-        print_success "Plugin already in config"
-        return
-    fi
-    
-    # Try to add plugin to existing config using different methods
-    if command -v jq &> /dev/null; then
-        # Use jq if available (most reliable)
-        local tmp_file=$(mktemp)
-        if jq '.plugin = (.plugin // []) + ["opencode-autotitle"] | .plugin |= unique' "$config_file" > "$tmp_file" 2>/dev/null; then
-            mv "$tmp_file" "$config_file"
-            print_success "Added plugin to config using jq"
-            return
-        fi
-        rm -f "$tmp_file"
-    fi
-    
-    # Fallback: Try to add using sed for simple cases
-    # Case 1: "plugin": [] - empty array
-    if grep -q '"plugin"[[:space:]]*:[[:space:]]*\[\]' "$config_file"; then
-        sed -i.bak 's/"plugin"[[:space:]]*:[[:space:]]*\[\]/"plugin": ["opencode-autotitle"]/' "$config_file"
-        rm -f "${config_file}.bak"
-        print_success "Added plugin to empty plugin array"
-        return
-    fi
-    
-    # Case 2: "plugin": ["something"] - existing array
-    if grep -q '"plugin"[[:space:]]*:[[:space:]]*\[' "$config_file"; then
-        # Add to existing array (before the closing bracket)
-        sed -i.bak 's/"plugin"[[:space:]]*:[[:space:]]*\[/"plugin": ["opencode-autotitle", /' "$config_file"
-        rm -f "${config_file}.bak"
-        print_success "Added plugin to existing plugin array"
-        return
-    fi
-    
-    # Case 3: No plugin key exists - need to add it
-    # This is trickier without jq, so we'll warn the user
-    print_warning "Could not automatically add plugin to config"
-    echo ""
-    echo "Please manually add to $config_file:"
-    echo '  "plugin": ["opencode-autotitle"]'
-    echo ""
-}
-
 print_next_steps() {
     echo ""
     echo -e "${GREEN}Installation complete!${NC}"
@@ -188,7 +123,6 @@ main() {
     check_opencode
     install_plugin
     build_plugin
-    add_to_config
     print_next_steps
 }
 

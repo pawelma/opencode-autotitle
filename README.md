@@ -34,17 +34,9 @@ curl -fsSL https://raw.githubusercontent.com/pawelma/opencode-autotitle/refs/hea
 
 ### Manual Installation
 
-**Via npm (simplest)**
+**Via local plugins directory (recommended)**
 
-Add to your `~/.config/opencode/opencode.json`:
-
-```json
-{
-  "plugin": ["opencode-autotitle"]
-}
-```
-
-**Via local plugins directory**
+Plugins in `~/.config/opencode/plugins/` are auto-discovered - no config changes needed.
 
 ```bash
 mkdir -p ~/.config/opencode/plugins
