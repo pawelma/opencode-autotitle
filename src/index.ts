@@ -14,17 +14,49 @@ interface State {
   cheapestModel: { providerID: string; modelID: string } | null | undefined  // null = not yet loaded, undefined = loaded but not found
 }
 
-// Known cheap/fast models by provider (fallback if API doesn't provide cost info)
-const CHEAP_MODELS: Record<string, string> = {
-  anthropic: "claude-haiku-4-5",
-  openai: "gpt-4o-mini",
-  google: "gemini-2.0-flash",
-  "github-copilot": "gpt-4o-mini",
-  groq: "llama-3.1-8b-instant",
-  together: "meta-llama/Llama-3-8b-chat-hf",
-  fireworks: "accounts/fireworks/models/llama-v3p1-8b-instruct",
-  deepseek: "deepseek-chat",
-  mistral: "mistral-small-latest",
+// Known cheap/fast model patterns - used to identify cheap models from provider's list
+const CHEAP_MODEL_PATTERNS = [
+  /haiku/i,
+  /mini/i,
+  /flash/i,
+  /instant/i,
+  /small/i,
+  /8b/i,
+  /7b/i,
+  /fast/i,
+  /lite/i,
+  /turbo/i,
+]
+
+function findCheapestFromModels(models: any, log: ReturnType<typeof createLogger>): string | null {
+  // Handle both array and object formats
+  let modelIds: string[] = []
+  
+  if (Array.isArray(models)) {
+    modelIds = models
+      .map((m: any) => m.id || m.name || m)
+      .filter((id): id is string => typeof id === "string")
+  } else if (models && typeof models === "object") {
+    // Models is an object with model IDs as keys
+    modelIds = Object.keys(models)
+  }
+  
+  if (modelIds.length === 0) return null
+  
+  log.debug(`Available models: ${modelIds.slice(0, 10).join(", ")}${modelIds.length > 10 ? "..." : ""}`)
+  
+  // Try to find a cheap model by pattern matching
+  for (const pattern of CHEAP_MODEL_PATTERNS) {
+    const match = modelIds.find(id => pattern.test(id))
+    if (match) {
+      log.debug(`Found cheap model by pattern ${pattern}: ${match}`)
+      return match
+    }
+  }
+  
+  // No cheap model found, return first available
+  log.debug(`No cheap model pattern matched, using first: ${modelIds[0]}`)
+  return modelIds[0] || null
 }
 
 function loadConfig(): PluginConfig {
@@ -80,56 +112,65 @@ async function findCheapestModel(
   }
 
   try {
+    // First, get connected providers to prefer currently logged-in provider
+    let connectedProviderIds: string[] = []
+    try {
+      const providerResponse = await client.provider.list() as any
+      const providerData = providerResponse?.data || providerResponse
+      connectedProviderIds = providerData?.connected || []
+      log.debug(`Connected providers: ${connectedProviderIds.join(", ") || "none"}`)
+    } catch (e) {
+      log.debug(`Failed to fetch connected providers: ${e instanceof Error ? e.message : "unknown"}`)
+    }
+
     const providersResponse = await client.config.providers() as any
-    const providers = providersResponse?.providers || providersResponse?.data?.providers || []
-    const defaults = providersResponse?.default || providersResponse?.data?.default || {}
+    const responseData = providersResponse?.data || providersResponse
+    const providers = responseData?.providers || []
     
     log.debug(`Found ${providers.length} providers`)
     
-    // If a specific provider is requested, find cheap model for it
+    // Debug: log provider structure
+    if (providers.length > 0) {
+      log.debug(`First provider keys: ${JSON.stringify(Object.keys(providers[0]))}`)
+      log.debug(`First provider: ${JSON.stringify(providers[0]).slice(0, 500)}`)
+    }
+    
+    // If a specific provider is requested, use it
     if (config.provider) {
       const provider = providers.find((p: any) => p.id === config.provider)
       if (provider) {
-        // Check if we have a known cheap model for this provider
-        const cheapModel = CHEAP_MODELS[config.provider]
-        if (cheapModel) {
-          // Verify the model exists in provider's models
-          const models = provider.models || []
-          const modelExists = models.some((m: any) => m.id === cheapModel || m.name === cheapModel)
-          if (modelExists) {
-            log.debug(`Using known cheap model for ${config.provider}: ${cheapModel}`)
-            return { providerID: config.provider, modelID: cheapModel }
-          }
-        }
-        // Fall back to first model from provider
-        if (provider.models?.length > 0) {
-          const modelID = provider.models[0].id || provider.models[0].name
-          log.debug(`Using first model from ${config.provider}: ${modelID}`)
-          return { providerID: config.provider, modelID }
-        }
-      }
-    }
-    
-    // Find any available cheap model from known list
-    for (const [providerID, modelID] of Object.entries(CHEAP_MODELS)) {
-      const provider = providers.find((p: any) => p.id === providerID)
-      if (provider) {
         const models = provider.models || []
-        const modelExists = models.some((m: any) => m.id === modelID || m.name === modelID)
-        if (modelExists) {
-          log.debug(`Found available cheap model: ${providerID}/${modelID}`)
-          return { providerID, modelID }
+        const cheapModel = findCheapestFromModels(models, log)
+        if (cheapModel) {
+          return { providerID: config.provider, modelID: cheapModel }
         }
       }
     }
     
-    // Last resort: use first provider's default model
-    if (Object.keys(defaults).length > 0) {
-      const providerID = Object.keys(defaults)[0]
-      const modelID = defaults[providerID]
-      log.debug(`Using default model: ${providerID}/${modelID}`)
-      return { providerID, modelID }
+    // Prioritize connected (logged-in) providers first
+    // This respects the user's current provider choice and avoids unnecessary provider switching
+    const connectedProviders = providers.filter((p: any) => connectedProviderIds.includes(p.id))
+    const otherProviders = providers.filter((p: any) => !connectedProviderIds.includes(p.id))
+    const sortedProviders = [...connectedProviders, ...otherProviders]
+    
+    if (connectedProviders.length > 0) {
+      log.debug(`Prioritizing ${connectedProviders.length} connected provider(s): ${connectedProviders.map((p: any) => p.id).join(", ")}`)
     }
+    
+    // Find cheapest model, preferring connected providers
+    for (const provider of sortedProviders) {
+      const providerID = provider.id
+      if (!providerID) continue
+      
+      const models = provider.models || []
+      const cheapModel = findCheapestFromModels(models, log)
+      if (cheapModel) {
+        log.debug(`Selected ${providerID}/${cheapModel}`)
+        return { providerID, modelID: cheapModel }
+      }
+    }
+    
+    log.debug("No models found in any provider")
   } catch (e) {
     log.debug(`Failed to fetch providers: ${e instanceof Error ? e.message : "unknown"}`)
   }
@@ -533,9 +574,12 @@ export const AutoTitle: Plugin = async ({ client }) => {
             const found = await findCheapestModel(client, config, log)
             state.cheapestModel = found ?? undefined  // undefined means "tried but not found"
             if (state.cheapestModel) {
-              log.debug(`Using model: ${state.cheapestModel.providerID}/${state.cheapestModel.modelID}`)
+              log.debug(`Selected model: ${state.cheapestModel.providerID}/${state.cheapestModel.modelID}`)
+            } else {
+              log.debug("No cheap model found, will use session default")
             }
-          } catch {
+          } catch (e) {
+            log.debug(`Failed to find cheap model: ${e instanceof Error ? e.message : "unknown"}`)
             state.cheapestModel = undefined  // Mark as tried
           }
         }
