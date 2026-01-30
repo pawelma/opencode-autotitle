@@ -138,7 +138,7 @@ All configuration is optional. The plugin works out of the box.
 | `OPENCODE_AUTOTITLE_MODEL` | (auto) | Model ID like `anthropic/claude-haiku-4-5` |
 | `OPENCODE_AUTOTITLE_MAX_LENGTH` | `60` | Maximum title character length |
 | `OPENCODE_AUTOTITLE_DISABLED` | `false` | Set to `1` to disable the plugin |
-| `OPENCODE_AUTOTITLE_DEBUG` | `false` | Set to `1` for stderr logging, or a file path (e.g., `debug.log`) |
+| `OPENCODE_AUTOTITLE_DEBUG` | `false` | File path for debug logs (e.g., `debug.log`) |
 
 ### Model Selection
 
@@ -171,11 +171,6 @@ Recommended models for title generation:
 Enable debug mode to see what's happening:
 
 ```bash
-# Option 1: Log to stderr (mixed with OpenCode output)
-export OPENCODE_AUTOTITLE_DEBUG=1
-opencode
-
-# Option 2: Log to file (recommended for easier debugging)
 export OPENCODE_AUTOTITLE_DEBUG=debug.log
 opencode
 # In another terminal: tail -f debug.log

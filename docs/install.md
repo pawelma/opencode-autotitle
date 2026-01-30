@@ -65,7 +65,7 @@ The plugin works out of the box with sensible defaults. For customization, set e
 | `OPENCODE_AUTOTITLE_MODEL` | (auto) | Model ID like `anthropic/claude-haiku-4-5` |
 | `OPENCODE_AUTOTITLE_MAX_LENGTH` | `60` | Maximum title character length |
 | `OPENCODE_AUTOTITLE_DISABLED` | `false` | Set to `1` to disable |
-| `OPENCODE_AUTOTITLE_DEBUG` | `false` | Set to `1` for stderr logging, or a file path (e.g., `debug.log`) |
+| `OPENCODE_AUTOTITLE_DEBUG` | `false` | File path for debug logs (e.g., `debug.log`) |
 
 **Model selection:** By default, the plugin auto-discovers the cheapest available model from your connected providers (preferring `fast`, `flash`, `haiku`, `mini` patterns).
 

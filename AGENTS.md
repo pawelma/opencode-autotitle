@@ -137,9 +137,9 @@ function loadConfig(): PluginConfig {
   const env = process.env
   return {
     model: env.OPENCODE_AUTOTITLE_MODEL || null,
-    maxLength: Number(env.OPENCODE_AUTOTITLE_MAX_LENGTH) || 40,
+    maxLength: Number(env.OPENCODE_AUTOTITLE_MAX_LENGTH) || 60,
     disabled: env.OPENCODE_AUTOTITLE_DISABLED === "1" || env.OPENCODE_AUTOTITLE_DISABLED === "true",
-    debug: env.OPENCODE_AUTOTITLE_DEBUG === "1" || env.OPENCODE_AUTOTITLE_DEBUG === "true",
+    debug: env.OPENCODE_AUTOTITLE_DEBUG || false,  // File path for debug logs
   }
 }
 ```
@@ -151,8 +151,8 @@ function loadConfig(): PluginConfig {
 const log = createLogger(config.debug, client)
 
 // Usage
-log.debug("Detailed info")   // Only shows when OPENCODE_AUTOTITLE_DEBUG=1
-log.info("Important info")   // Only shows when OPENCODE_AUTOTITLE_DEBUG=1
+log.debug("Detailed info")   // Only shows when OPENCODE_AUTOTITLE_DEBUG is set
+log.info("Important info")   // Only shows when OPENCODE_AUTOTITLE_DEBUG is set
 log.error("Always shows")    // Always outputs to stderr
 ```
 
@@ -265,7 +265,7 @@ return {
 ### Debugging
 
 ```bash
-export OPENCODE_AUTOTITLE_DEBUG=1
+export OPENCODE_AUTOTITLE_DEBUG=debug.log
 opencode
-# Look for [autotitle] messages in stderr
+# In another terminal: tail -f debug.log
 ```
