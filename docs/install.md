@@ -6,13 +6,13 @@ Paste this into your LLM agent (OpenCode, Claude Code, Cursor, etc.):
 
 ```
 Install opencode-autotitle by following the instructions here:
-https://raw.githubusercontent.com/pawelma/opencode-autotitle/main/docs/install.md
+https://raw.githubusercontent.com/pawelma/opencode-autotitle/refs/heads/master/docs/install.md
 ```
 
 **Alternative: Quick Install**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/pawelma/opencode-autotitle/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/pawelma/opencode-autotitle/refs/heads/master/install.sh | bash
 ```
 
 ## For LLM Agents

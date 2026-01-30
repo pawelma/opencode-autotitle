@@ -4,7 +4,7 @@ set -euo pipefail
 PLUGIN_NAME="opencode-autotitle"
 PLUGIN_DIR="$HOME/.config/opencode/plugins/$PLUGIN_NAME"
 REPO_URL="https://github.com/pawelma/opencode-autotitle"
-RAW_URL="https://raw.githubusercontent.com/pawelma/opencode-autotitle/main"
+RAW_URL="https://raw.githubusercontent.com/pawelma/opencode-autotitle/refs/heads/master"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'

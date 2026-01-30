@@ -23,13 +23,13 @@ Paste this into OpenCode, Claude Code, Cursor, or any AI coding assistant:
 
 ```
 Install opencode-autotitle by following the instructions here:
-https://raw.githubusercontent.com/pawelma/opencode-autotitle/main/docs/install.md
+https://raw.githubusercontent.com/pawelma/opencode-autotitle/refs/heads/master/docs/install.md
 ```
 
 **Option 2: One-liner**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/pawelma/opencode-autotitle/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/pawelma/opencode-autotitle/refs/heads/master/install.sh | bash
 ```
 
 ### Manual Installation
