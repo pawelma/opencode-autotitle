@@ -565,3 +565,49 @@ describe("CHEAP_MODEL_PATTERNS", () => {
     expect(fastPattern?.test("fast")).toBe(true)
   })
 })
+
+describe("OpenCode V2 Plugin Integration", () => {
+  it("exports a valid V2 plugin definition with id 'autotitle'", async () => {
+    const { default: AutoTitlePlugin, AutoTitle, plugin } = await import("./index")
+    expect(plugin.id).toBe("autotitle")
+    expect(typeof plugin.setup).toBe("function")
+    expect(AutoTitle.id).toBe("autotitle")
+    expect(typeof AutoTitle.setup).toBe("function")
+    expect(AutoTitlePlugin.id).toBe("autotitle")
+  })
+
+  it("subscribes to events in V2 setup context", async () => {
+    const { AutoTitle } = await import("./index")
+    let subscribed = false
+    const mockCtx = {
+      session: {
+        get: vi.fn().mockResolvedValue({ title: "2026-03-27" }),
+        update: vi.fn().mockResolvedValue({}),
+        messages: vi.fn().mockResolvedValue([]),
+      },
+      event: {
+        subscribe: vi.fn().mockImplementation(() => {
+          subscribed = true
+          return (async function* () {})()
+        }),
+      },
+    }
+
+    await AutoTitle.setup(mockCtx as any)
+    expect(mockCtx.event.subscribe).toHaveBeenCalled()
+    expect(subscribed).toBe(true)
+  })
+
+  it("supports V1 backward-compatible invocation", async () => {
+    const { AutoTitle } = await import("./index")
+    const mockClient = {
+      session: {
+        get: vi.fn().mockResolvedValue({ title: "2026-03-27" }),
+        update: vi.fn().mockResolvedValue({}),
+      },
+    }
+
+    const instance = await AutoTitle({ client: mockClient })
+    expect(typeof instance.event).toBe("function")
+  })
+})

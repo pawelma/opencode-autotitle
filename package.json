@@ -46,7 +46,7 @@
     "node": ">=18.0.0"
   },
   "devDependencies": {
-    "@opencode-ai/plugin": "^1.0.0",
+    "@opencode/plugin": "^2.0.32",
     "@types/node": "^20.0.0",
     "typescript": "^5.0.0",
     "vitest": "^4.0.18"

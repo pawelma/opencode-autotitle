@@ -75,11 +75,15 @@ No ESLint or Prettier configuration exists. When adding:
 ### Imports
 
 ```typescript
-// Use type-only imports for types
-import type { Plugin } from "@opencode-ai/plugin"
+// Use type-only imports or Plugin from @opencode/plugin
+import { Plugin } from "@opencode/plugin"
 
 // ESM module syntax only (no CommonJS)
-export const AutoTitle: Plugin = async ({ client }) => { ... }
+export const plugin = Plugin.define({
+  id: "autotitle",
+  async setup(ctx) { ... }
+})
+export const AutoTitle = plugin
 export default AutoTitle
 ```
 
