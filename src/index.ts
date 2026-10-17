@@ -839,4 +839,4 @@ export const AutoTitle = Object.assign(
   plugin
 )
 
-export default AutoTitle
+export default plugin
