@@ -4,11 +4,52 @@
 [![Publish to npm](https://github.com/pawelma/opencode-autotitle/actions/workflows/publish.yml/badge.svg)](https://github.com/pawelma/opencode-autotitle/actions/workflows/publish.yml)
 [![npm version](https://img.shields.io/npm/v/opencode-autotitle.svg)](https://www.npmjs.com/package/opencode-autotitle)
 
+> [!WARNING]
+> **Repository Archived & Deprecated for OpenCode 2.0+**
+>
+> OpenCode 2.0+ now natively supports automatic session titling via its built-in `title` system agent and `SessionTitle` service. This plugin is no longer needed or recommended for OpenCode 2.0+, as running it alongside OpenCode 2.0 causes race conditions and redundant LLM calls.
+>
+> For existing OpenCode 1.x installations, the legacy package remains available on [npm (`v0.1.3`)](https://www.npmjs.com/package/opencode-autotitle).
+> For a detailed architectural evaluation, see [docs/opencode-2.0-analysis.md](docs/opencode-2.0-analysis.md).
+
+## Migrating to Native OpenCode 2.0 Autotitling
+
+OpenCode 2.0 automatically generates descriptive titles for new sessions after your first prompt. You can configure which model and prompt the native `title` agent uses directly in your global or project configuration:
+
+### Quick Setup (`~/.config/opencode/opencode.json` or `opencode.json`)
+
+Add the `title` agent under `agents`:
+
+```jsonc
+{
+  "$schema": "https://opencode.ai/config.json",
+  "agents": {
+    "title": {
+      "model": "github-copilot/gpt-4.1-mini", // Or: openrouter/openai/gpt-4o-mini, google/gemini-2.5-flash
+      "prompt": "Generate a concise, specific title (3-6 words) for this conversation. Return ONLY the title."
+    }
+  }
+}
+```
+
+### OpenCode Documentation & Resources
+
+* [OpenCode Agent Configuration](https://opencode.ai/docs/agents) — Documentation on configuring primary and hidden system agents (`title`, `compaction`, `summary`).
+* [OpenCode Configuration Reference](https://opencode.ai/docs) & [JSON Schema](https://opencode.ai/config.json) — Full configuration options.
+* [OpenCode CLI Reference](https://opencode.ai/docs/cli) — Manual session naming via `opencode run --title "My Title"`.
+* [Architectural Analysis](docs/opencode-2.0-analysis.md) — Detailed report explaining OpenCode 2.0's internal `SessionTitle` service and why an external plugin is obsolete.
+
+---
+
+## Legacy OpenCode 1.x Documentation
+
+The documentation below is preserved for users running OpenCode 1.x.
+
 AI-powered automatic session naming for [OpenCode](https://opencode.ai).
 
 Automatically generates descriptive titles for your OpenCode sessions based on conversation context, replacing generic timestamp-based names like "2024-01-15 14:30" with meaningful descriptions like "Setup React Auth Flow".
 
-## From Timestamp Chaos to Meaningful Titles
+### From Timestamp Chaos to Meaningful Titles
 
 | Before | After |
 |--------|-------|
