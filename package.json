@@ -1,7 +1,8 @@
 {
   "name": "opencode-autotitle",
   "version": "0.1.3",
-  "description": "AI-powered automatic session naming for OpenCode - titles your sessions based on context",
+  "description": "AI-powered automatic session naming for OpenCode - titles your sessions based on context (Deprecated for OpenCode 2.0+)",
+  "deprecated": "OpenCode 2.0 includes native session title auto-generation. See README.md for native configuration.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "type": "module",
